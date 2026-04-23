@@ -1,23 +1,22 @@
 #pragma once
 
 #include "data.hh"
+#include <FreeRTOS/FreeRTOS.h>
 #include <esp_event.h>
-#include <mqtt_client.h>
+#include <lmic/lmic.h>
 #include <stdint.h>
 #include <vector>
 
-struct Mqtt {
-  Mqtt();
+struct LoRa {
+  LoRa(uint8_t core);
 
   void send_aggregate_data(const AggregationData &data);
 
 private:
   TaskHandle_t task;
   QueueHandle_t queue;
-  esp_mqtt_client_handle_t client;
   std::vector<uint8_t> packet_buffer;
 
   static void run_static(void *args);
-  static void handle_event_static(void *handler_args, esp_event_base_t base,
-                                  int32_t event_id, void *event_data);
+  static void handle_event_static(void *args, ev_t event);
 };

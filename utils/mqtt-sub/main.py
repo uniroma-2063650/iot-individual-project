@@ -13,10 +13,11 @@ def on_connect(client, userdata, flags, reason_code, properties):
     client.subscribe("topic/aggregate")
 
 def on_message(client, userdata, msg):
-    time, = struct.unpack("<f", msg.payload[:4])
-    size, = struct.unpack("!I", msg.payload[4:8])
-    values = struct.unpack("<" + "f" * size, msg.payload[8:])
-    print(f"{msg.topic}: {time:.2f} s, {size} values, [{", ".join(f"{value:.2f}" for value in values)}]")
+    end_seconds, = struct.unpack("<f", msg.payload[:4])
+    seconds_per_value, = struct.unpack("<f", msg.payload[4:8])
+    size, = struct.unpack("!I", msg.payload[8:12])
+    values = struct.unpack("<" + "f" * size, msg.payload[12:])
+    print(f"{msg.topic}: {end_seconds:.2f} s, {size} values (1 value per {(seconds_per_value * 1000):.2f} ms), [{", ".join(f"{value:.2f}" for value in values)}]")
 
 mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 mqttc.on_connect = on_connect

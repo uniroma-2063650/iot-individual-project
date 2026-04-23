@@ -1,4 +1,6 @@
+#include "data.hh"
 #include "fft/analysis.hh"
+#include "lora.hh"
 #include "mqtt.hh"
 #include "waves.hh"
 #include <FreeRTOS/FreeRTOS.h>
@@ -51,7 +53,6 @@ constexpr size_t ADC_WINDOW_SIZE_MAX = 128;
 constexpr size_t WINDOW_SIZE_INIT =
     std::bit_ceil(ceil_const<double, size_t>(SAMPLE_RATE_INIT / MIN_HZ));
 
-using Sample = float;
 std::array<adc_continuous_data_t, ADC_WINDOW_SIZE_MAX> adc_data_buffer{};
 std::array<std::array<Sample, WINDOW_SIZE_INIT + fft_analysis::PREV_DATA_SIZE +
                                   fft_analysis::NEXT_DATA_SIZE>,
@@ -100,44 +101,29 @@ struct FFTState {
   }
 };
 
-FFTState fft_state;
-
-constexpr bool SHOULD_SWITCH_TO_OPTIMAL = false;
+constexpr bool USE_MQTT = false;
+constexpr bool SWITCH_TO_OPTIMAL = false;
 constexpr uint8_t WAVE_INDEX = 0;
 
-TaskHandle_t transmit_aggregate_task;
-TaskHandle_t fft_task;
-TaskHandle_t collect_task;
-QueueHandle_t aggregate_queue;
+static FFTState fft_state;
 
-struct AggregationData {
-  size_t size;
-  Sample *values;
-};
-
-void transmit_aggregate(void *args) {
-  Mqtt mqtt;
-  for (;;) {
-    AggregationData data;
-    if (xQueueReceive(aggregate_queue, &data, portMAX_DELAY) != pdTRUE)
-      continue;
-    const float seconds = pdTICKS_TO_MS(xTaskGetTickCount()) /
-                          1000.0; // TODO: Use esp_timer instead
-    mqtt.send_aggregate_data(seconds, data.values, data.size);
-    free(data.values);
-  }
-}
+static Mqtt *mqtt = nullptr;
+static LoRa *lora = nullptr;
+static TaskHandle_t fft_task;
+static TaskHandle_t collect_task;
 
 void process_fft(void *args) {
   size_t buffer_i = 0;
   for (size_t window_i = 0;; window_i++, buffer_i ^= 1) {
-    if (window_i != 0 || !SHOULD_SWITCH_TO_OPTIMAL) {
+    if (window_i != 0 || !SWITCH_TO_OPTIMAL) {
       xTaskNotifyGive(collect_task);
     }
     ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
     ESP_LOGI(TAG, "Processing buffer %zu", buffer_i);
     fft_state.process(buffer_i);
     if (!fft_state.analysis.result.aggregation_results.empty()) {
+      ESP_LOGI(TAG, "Sending aggregation results to publisher thread");
+
       const size_t size = fft_state.analysis.result.aggregation_results.size();
       Sample *const aggregation_results_copy =
           (Sample *)malloc(size * sizeof(Sample));
@@ -145,12 +131,25 @@ void process_fft(void *args) {
       memcpy(aggregation_results_copy,
              fft_state.analysis.result.aggregation_results.data(),
              size * sizeof(Sample));
-      const AggregationData data{.size = size,
-                                 .values = aggregation_results_copy};
-      ESP_LOGI(TAG, "Sending aggregation results to publisher thread");
-      xQueueSend(aggregate_queue, &data, pdMS_TO_TICKS(100));
+
+      const float end_seconds = pdTICKS_TO_MS(xTaskGetTickCount()) /
+                                1000.0; // TODO: Use esp_timer instead;
+      const AggregationData data{
+          .end_seconds = end_seconds,
+          .seconds_per_value =
+              1.0f / fft_state.sample_rate_hz *
+              fft_state.analysis.options.aggregation_window_size,
+          .size = (uint32_t)size,
+          .values = aggregation_results_copy};
+
+      if (mqtt) {
+        mqtt->send_aggregate_data(data);
+      }
+      if (lora) {
+        lora->send_aggregate_data(data);
+      }
     }
-    if (window_i == 0 && SHOULD_SWITCH_TO_OPTIMAL) {
+    if (window_i == 0 && SWITCH_TO_OPTIMAL) {
       fft_state.update_sample_rate();
       ESP_LOGI(TAG, "Processing done for buffer %zu", buffer_i);
       xTaskNotifyGive(collect_task);
@@ -313,9 +312,11 @@ void collect_dummy(void *args) {
 }
 
 extern "C" void app_main(void) {
-  aggregate_queue = xQueueCreate(4, sizeof(AggregationData));
-  xTaskCreate(transmit_aggregate, "transmit_aggregate", 4096, nullptr, 5,
-              &transmit_aggregate_task);
+  if constexpr (USE_MQTT) {
+    mqtt = new Mqtt();
+  } else {
+    lora = new LoRa(0);
+  }
   xTaskCreate(collect_dummy, "collect", 4096, nullptr, 5, &collect_task);
   xTaskCreate(process_fft, "fft", 4096, nullptr, 5, &fft_task);
   xTaskNotifyGive(collect_task);

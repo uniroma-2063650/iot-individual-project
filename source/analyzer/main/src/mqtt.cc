@@ -1,10 +1,10 @@
 #include "mqtt.hh"
-#include "mqtt_client.h"
-
+#include "data.hh"
 #include <bit>
 #include <esp_event.h>
 #include <esp_log.h>
 #include <esp_netif.h>
+#include <mqtt_client.h>
 #include <nvs_flash.h>
 #include <protocol_examples_common.h>
 
@@ -51,15 +51,14 @@ Mqtt::Mqtt() {
   esp_mqtt_client_register_event(client, MQTT_EVENT_ANY,
                                  Mqtt::handle_event_static, this);
   esp_mqtt_client_start(client);
+
+  queue = xQueueCreate(4, sizeof(AggregationData));
+  assert(queue);
+  assert(xTaskCreate(Mqtt::run_static, "mqtt", 4096, this, 5, &task) == pdTRUE);
 }
 
 void Mqtt::handle_event_static(void *handler_args, esp_event_base_t base,
                                int32_t event_id, void *event_data) {
-  return ((Mqtt *)handler_args)->handle_event(base, event_id, event_data);
-}
-
-void Mqtt::handle_event(esp_event_base_t base, int32_t event_id,
-                        void *event_data) {
   ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32,
            base, event_id);
   esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)event_data;
@@ -115,26 +114,34 @@ void Mqtt::handle_event(esp_event_base_t base, int32_t event_id,
 }
 
 struct PacketHeader {
-  float seconds;
+  float end_seconds;
+  float seconds_per_value;
   uint32_t values;
 };
 
-void Mqtt::send_aggregate_data(float seconds, const float values[],
-                               uint32_t size) {
-  const size_t packet_size = sizeof(PacketHeader) + size * sizeof(uint32_t);
-  ESP_LOGI(TAG, "Sending %zu aggregate values (%zu B) at %f s", size,
-           size * sizeof(float), seconds);
+void Mqtt::run_static(void *args) {
+  Mqtt *self = (Mqtt *)args;
 
-  packet_buffer.resize(packet_size);
-  *(PacketHeader *)packet_buffer.data() = PacketHeader{
-      .seconds = seconds,
-      .values = std::byteswap(size),
-  };
-  for (size_t i = 0; i < size; i++) {
-    ((float *)((PacketHeader *)packet_buffer.data() + 1))[i] = values[i];
+  for (;;) {
+    AggregationData data;
+    if (xQueueReceive(self->queue, &data, portMAX_DELAY) != pdTRUE)
+      continue;
+
+    ESP_LOGI(TAG,
+             "Sending %zu aggregate values (%zu B, %f s per value) at %f s",
+             data.size, data.size * sizeof(float), data.end_seconds);
+
+    const size_t packet_size = data.packed_size();
+    self->packet_buffer.resize(packet_size);
+    data.pack(self->packet_buffer.data());
+
+    esp_mqtt_client_publish(self->client, "topic/aggregate",
+                            (const char *)self->packet_buffer.data(),
+                            packet_size, 2, true);
+    free(data.values);
   }
+}
 
-  esp_mqtt_client_publish(client, "topic/aggregate",
-                          (const char *)packet_buffer.data(), packet_size, 2,
-                          true);
+void Mqtt::send_aggregate_data(const AggregationData &data) {
+  xQueueSend(queue, &data, pdMS_TO_TICKS(100));
 }
