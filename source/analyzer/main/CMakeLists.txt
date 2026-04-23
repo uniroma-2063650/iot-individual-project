@@ -1,0 +1,11 @@
+set(
+    srcs
+    "src/main.cc"
+    "src/mqtt.cc"
+)
+
+idf_component_register(
+    SRCS "${srcs}"
+    INCLUDE_DIRS "include"
+    PRIV_REQUIRES mqtt esp_adc arduinoFFT esp_driver_i2c
+)

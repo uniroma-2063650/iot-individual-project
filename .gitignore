@@ -1,0 +1,16 @@
+.vscode
+*.o
+*.out
+*.elf
+.clangd
+.DS_Store
+.cache
+build
+managed_components
+.venv
+node_modules
+*.key
+*.csr
+*.crt
+sdkconfig
+sdkconfig.old
