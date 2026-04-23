@@ -1,7 +1,12 @@
 #include "mqtt.hh"
-
 #include "mqtt_client.h"
+
+#include <bit>
+#include <esp_event.h>
 #include <esp_log.h>
+#include <esp_netif.h>
+#include <nvs_flash.h>
+#include <protocol_examples_common.h>
 
 constexpr const char *TAG = "MQTT";
 
@@ -19,12 +24,17 @@ static void log_error_if_nonzero(const char *message, int error_code) {
 }
 
 Mqtt::Mqtt() {
+  ESP_ERROR_CHECK(nvs_flash_init());
+  ESP_ERROR_CHECK(esp_netif_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
+  ESP_ERROR_CHECK(example_connect());
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
   const esp_mqtt_client_config_t mqtt_cfg = {
       .broker = {.address =
                      {
-                         .uri = "mqtts://test.mosquitto.org:8884",
+                         .uri = "mqtts://172.20.10.2:8883",
                      },
                  .verification = {.certificate =
                                       (const char *)broker_cert_start}},
@@ -36,9 +46,8 @@ Mqtt::Mqtt() {
               },
       }};
 #pragma GCC diagnostic pop
-  ESP_LOGI(TAG, "[APP] Free memory: %" PRIu32 " bytes",
-           esp_get_free_heap_size());
-  esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
+  ESP_LOGI(TAG, "Free memory: %" PRIu32 " bytes", esp_get_free_heap_size());
+  client = esp_mqtt_client_init(&mqtt_cfg);
   esp_mqtt_client_register_event(client, MQTT_EVENT_ANY,
                                  Mqtt::handle_event_static, this);
   esp_mqtt_client_start(client);
@@ -54,18 +63,10 @@ void Mqtt::handle_event(esp_event_base_t base, int32_t event_id,
   ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32,
            base, event_id);
   esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)event_data;
-  esp_mqtt_client_handle_t client = event->client;
-  int msg_id;
 
   switch ((esp_mqtt_event_id_t)event_id) {
   case MQTT_EVENT_CONNECTED:
     ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-    msg_id = esp_mqtt_client_subscribe(client, "topic/qos0", 0);
-    ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-    msg_id = esp_mqtt_client_subscribe(client, "topic/qos1", 1);
-    ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-    msg_id = esp_mqtt_client_unsubscribe(client, "topic/qos1");
-    ESP_LOGI(TAG, "sent unsubscribe successful, msg_id=%d", msg_id);
     break;
 
   case MQTT_EVENT_DISCONNECTED:
@@ -75,8 +76,6 @@ void Mqtt::handle_event(esp_event_base_t base, int32_t event_id,
   case MQTT_EVENT_SUBSCRIBED:
     ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d, return code=0x%02x ",
              event->msg_id, (uint8_t)*event->data);
-    msg_id = esp_mqtt_client_publish(client, "topic/qos0", "data", 0, 0, 0);
-    ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
     break;
 
   case MQTT_EVENT_UNSUBSCRIBED:
@@ -113,4 +112,29 @@ void Mqtt::handle_event(esp_event_base_t base, int32_t event_id,
     ESP_LOGI(TAG, "Other event id:%d", event->event_id);
     break;
   }
+}
+
+struct PacketHeader {
+  float seconds;
+  uint32_t values;
+};
+
+void Mqtt::send_aggregate_data(float seconds, const float values[],
+                               uint32_t size) {
+  const size_t packet_size = sizeof(PacketHeader) + size * sizeof(uint32_t);
+  ESP_LOGI(TAG, "Sending %zu aggregate values (%zu B) at %f s", size,
+           size * sizeof(float), seconds);
+
+  packet_buffer.resize(packet_size);
+  *(PacketHeader *)packet_buffer.data() = PacketHeader{
+      .seconds = seconds,
+      .values = std::byteswap(size),
+  };
+  for (size_t i = 0; i < size; i++) {
+    ((float *)((PacketHeader *)packet_buffer.data() + 1))[i] = values[i];
+  }
+
+  esp_mqtt_client_publish(client, "topic/aggregate",
+                          (const char *)packet_buffer.data(), packet_size, 2,
+                          true);
 }

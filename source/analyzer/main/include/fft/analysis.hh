@@ -167,7 +167,7 @@ struct FFTAnalysisOptions {
 };
 
 template <typename T> struct FFTAnalysisResult {
-  std::vector<T> avgs;
+  std::vector<T> aggregation_results;
   T last_peak_hz;
   T optimal_sample_rate_hz;
 };
@@ -240,23 +240,23 @@ template <typename T> struct FFTAnalysis {
       }
     }
 
-    result.avgs.clear();
+    result.aggregation_results.clear();
     switch (options.aggregation) {
     case FFTAnalysisAggregation::TumblingWindow: {
-      tumbling_window_avg.calc(result.avgs, data, options.window_size);
+      tumbling_window_avg.calc(result.aggregation_results, data, options.window_size);
       break;
     }
     case FFTAnalysisAggregation::SlidingWindow: {
-      sliding_window_avg.calc(result.avgs, data, options.window_size);
+      sliding_window_avg.calc(result.aggregation_results, data, options.window_size);
       break;
     }
     }
 
-    ESP_LOGI(TAG, "Average output size: %zu", result.avgs.size());
+    ESP_LOGI(TAG, "Average output size: %zu", result.aggregation_results.size());
     if (false && options.window_size < 256) {
-      for (size_t i = 0; i < result.avgs.size(); i++) {
+      for (size_t i = 0; i < result.aggregation_results.size(); i++) {
         ESP_LOGI(TAG, "Averaged: %f, %f", (T)i / options.sample_rate_hz,
-                 result.avgs[i]);
+                 result.aggregation_results[i]);
       }
     }
 

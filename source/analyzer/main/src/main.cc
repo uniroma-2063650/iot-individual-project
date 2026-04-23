@@ -1,9 +1,11 @@
 #include "fft/analysis.hh"
+#include "mqtt.hh"
 #include "waves.hh"
 #include <FreeRTOS/FreeRTOS.h>
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cassert>
 #include <cmath>
 #include <cstdlib>
 #include <esp_adc/adc_continuous.h>
@@ -100,11 +102,31 @@ struct FFTState {
 
 FFTState fft_state;
 
-constexpr bool SHOULD_SWITCH_TO_OPTIMAL = true;
+constexpr bool SHOULD_SWITCH_TO_OPTIMAL = false;
 constexpr uint8_t WAVE_INDEX = 0;
 
+TaskHandle_t transmit_aggregate_task;
 TaskHandle_t fft_task;
 TaskHandle_t collect_task;
+QueueHandle_t aggregate_queue;
+
+struct AggregationData {
+  size_t size;
+  Sample *values;
+};
+
+void transmit_aggregate(void *args) {
+  Mqtt mqtt;
+  for (;;) {
+    AggregationData data;
+    if (xQueueReceive(aggregate_queue, &data, portMAX_DELAY) != pdTRUE)
+      continue;
+    const float seconds = pdTICKS_TO_MS(xTaskGetTickCount()) /
+                          1000.0; // TODO: Use esp_timer instead
+    mqtt.send_aggregate_data(seconds, data.values, data.size);
+    free(data.values);
+  }
+}
 
 void process_fft(void *args) {
   size_t buffer_i = 0;
@@ -115,10 +137,25 @@ void process_fft(void *args) {
     ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
     ESP_LOGI(TAG, "Processing buffer %zu", buffer_i);
     fft_state.process(buffer_i);
-    ESP_LOGI(TAG, "Processing done for buffer %zu", buffer_i);
+    if (!fft_state.analysis.result.aggregation_results.empty()) {
+      const size_t size = fft_state.analysis.result.aggregation_results.size();
+      Sample *const aggregation_results_copy =
+          (Sample *)malloc(size * sizeof(Sample));
+      assert(aggregation_results_copy);
+      memcpy(aggregation_results_copy,
+             fft_state.analysis.result.aggregation_results.data(),
+             size * sizeof(Sample));
+      const AggregationData data{.size = size,
+                                 .values = aggregation_results_copy};
+      ESP_LOGI(TAG, "Sending aggregation results to publisher thread");
+      xQueueSend(aggregate_queue, &data, pdMS_TO_TICKS(100));
+    }
     if (window_i == 0 && SHOULD_SWITCH_TO_OPTIMAL) {
       fft_state.update_sample_rate();
+      ESP_LOGI(TAG, "Processing done for buffer %zu", buffer_i);
       xTaskNotifyGive(collect_task);
+    } else {
+      ESP_LOGI(TAG, "Processing done for buffer %zu", buffer_i);
     }
   }
 }
@@ -276,8 +313,10 @@ void collect_dummy(void *args) {
 }
 
 extern "C" void app_main(void) {
-  xTaskCreatePinnedToCore(collect_dummy, "collect", 4096, nullptr, 5,
-                          &collect_task, 0);
-  xTaskCreatePinnedToCore(process_fft, "fft", 4096, nullptr, 5, &fft_task, 0);
+  aggregate_queue = xQueueCreate(4, sizeof(AggregationData));
+  xTaskCreate(transmit_aggregate, "transmit_aggregate", 4096, nullptr, 5,
+              &transmit_aggregate_task);
+  xTaskCreate(collect_dummy, "collect", 4096, nullptr, 5, &collect_task);
+  xTaskCreate(process_fft, "fft", 4096, nullptr, 5, &fft_task);
   xTaskNotifyGive(collect_task);
 }

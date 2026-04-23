@@ -12,5 +12,6 @@ node_modules
 *.key
 *.csr
 *.crt
+*.srl
 sdkconfig
 sdkconfig.old
