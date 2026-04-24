@@ -58,7 +58,7 @@ In order to handle the noise, either a Z-Score filter or a 9-sample Hampel filte
 
 ## Performance Evaluation
 
-### Energy Savings through Sample Rate Optimization
+### Energy Savings and Packet Size through Sample Rate Optimization
 
 In order to evaluate the signal analyzer's power usage, a second program has been created to interface with an INA219 current and voltage sensor. Since the author didn't have a second ESP32 device available, this program was instead adapted to run on an AVR microcontroller.
 
@@ -78,21 +78,16 @@ As can be seen, the very low frequency of the signal allows the microcontroller 
 
 Due to the requirement for the window size to be a power of two and at least 9 samples big, while the sampling rate is adjusted to 11.2 Hz, the FFT window size is set to 16 samples, resulting in a ~1.42-second delay between each sample processing step.
 
-Because of the aggregation window size being fixed at 128 samples regardless of the sample rate, this also results in a reduction in network traffic from 128 values/s (1 packet with 128 values every second) to 0.0875 values/s (1 packet with a single value every ~11.4 seconds).
+Because of the aggregation window size being fixed at 128 samples regardless of the sample rate, this also results in a reduction in network traffic from 128 values/s (1 packet with 128 values every second, resulting in 524 B sent every second) to 0.0875 values/s (1 packet with a single value every ~11.4 seconds, resulting in 16 B sent every 11.4 seconds).
 
 A different situation can be seen for signal B, with a maximum frequency of 4000 Hz, and signal C, with a maximum frequency of 8100 Hz. Note that in these two cases, the original Hampel filter was disabled due to the signals' high-frequency components otherwise being smoothed out; the FreeRTOS tick rate also had to be modified back to its default of 100 due to currently unsolved issues inside ESP-IDF's automatic sleeping code.
 
 Signal B (unoptimized vs optimized):
 
-![Current with signal B and no sample rate adjustment](imgs/current_B_unoptimized.png)
-
-![Current with signal B and sample rate adjustment](imgs/current_B_optimized.png)
-
-Signal C (unoptimized vs optimized):
-
-![Current with signal C and no sample rate adjustment](imgs/current_C_unoptimized.png)
-
-![Current with signal C and sample rate adjustment](imgs/current_C_optimized.png)
+| Signal | Unoptimized | Optimized |
+| ------ | ----------- | --------- |
+| B | ![Current with signal B and no sample rate adjustment](imgs/current_B_unoptimized.png) | ![Current with signal B and sample rate adjustment](imgs/current_B_optimized.png) |
+| C | ![Current with signal C and no sample rate adjustment](imgs/current_C_unoptimized.png) | ![Current with signal C and sample rate adjustment](imgs/current_C_optimized.png) |
 
 As shown, the optimization shows diminishing return the closer the signal's highest frequency gets to the Nyquist frequency of 8.192 kHz (relative to a 16.384 kHz sampling rate): for signal B, the decrease in current draw is only of 31.35 mA (from 70.53 mA to 39.18 mA), while for signal C it's very low at 1.05 mA (from 69.82 mA to 68.77 mA).
 
@@ -104,7 +99,9 @@ From the point of view of the analyzer, the high-frequency baseline noise can on
 
 In general, the unwindowed Z-score filter, run on the full FFT input, worked well at detecting and replacing anomaly spikes that went outside the bounds of normal signals but didn't eliminate lower-amplitude spikes or spikes where the resulting sample was anomalous compared to its surroundings but still within the normal bounds of the overall signal.
 
-Windowed filters, such as a windowed Z-score filter and a hampel filter, performed better at detecting and replacing outliers.
+Windowed filters, such as a windowed Z-score filter and a hampel filter, performed almost perfectly at detecting and replacing anomalies and sparing normal data, although the baseline noise remained.
+
+![Hampel filter results](imgs/hampel.png)
 
 ### Latency
 

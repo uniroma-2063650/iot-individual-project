@@ -13,7 +13,7 @@ constexpr bool LORA_DEVICE_IS_HELTEC_V3 = false;
 #ifdef CONFIG_MAIN_TX_KIND_MQTT
 constexpr bool USE_MQTT = true;
 #else
-constexpr bool USE_MQTT = true;
+constexpr bool USE_MQTT = false;
 #endif
 
 constexpr uint8_t LORA_PORT = CONFIG_MAIN_TX_LORA_PORT;
@@ -21,7 +21,7 @@ constexpr uint8_t LORA_PORT = CONFIG_MAIN_TX_LORA_PORT;
 #ifdef CONFIG_MAIN_SWITCH_TO_OPTIMAL_FREQ
 constexpr bool SWITCH_TO_OPTIMAL = true;
 #else
-constexpr bool SWITCH_TO_OPTIMAL = true;
+constexpr bool SWITCH_TO_OPTIMAL = false;
 #endif
 
 #ifdef CONFIG_MAIN_WAVE_SOURCE_DUMMY
@@ -30,7 +30,7 @@ constexpr bool USE_DUMMY_WAVE = true;
 constexpr bool USE_DUMMY_WAVE = false;
 #endif
 
-constexpr uint8_t DUMMY_WAVE_INDEX = 0;
+constexpr uint8_t DUMMY_WAVE_INDEX = CONFIG_MAIN_DUMMY_WAVE_INDEX;
 
 #ifdef CONFIG_MAIN_FFT_NOISE_FILTER_HAMPEL
 constexpr fft_analysis::FFTAnalysisFilter FFT_FILTER =
@@ -38,7 +38,6 @@ constexpr fft_analysis::FFTAnalysisFilter FFT_FILTER =
 #elif defined(CONFIG_MAIN_FFT_NOISE_FILTER_ZSCORE)
 constexpr fft_analysis::FFTAnalysisFilter FFT_FILTER =
     fft_analysis::FFTAnalysisFilter::ZScore;
-#else
 #elif defined(CONFIG_MAIN_FFT_NOISE_FILTER_ZSCORE_WINDOWING)
 constexpr fft_analysis::FFTAnalysisFilter FFT_FILTER =
     fft_analysis::FFTAnalysisFilter::ZScoreWindowing;
@@ -56,4 +55,4 @@ constexpr fft_analysis::FFTAnalysisAggregation FFT_AGGREGATION =
 #endif
 
 constexpr size_t FFT_AGGREGATION_WINDOW_SIZE =
-    16;
+    CONFIG_MAIN_FFT_AGGREGATION_WINDOW_SIZE;
