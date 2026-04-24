@@ -1,3 +1,4 @@
+#include "config.hh"
 #include "data.hh"
 #include "fft/analysis.hh"
 #include "lora.hh"
@@ -14,26 +15,13 @@
 #include <soc/adc_channel.h>
 #include <soc/soc_caps.h>
 
-constexpr const char *TAG = "main";
-
 template <typename F, typename T> constexpr T ceil_const(F num) {
   return (static_cast<F>(static_cast<T>(num)) == num)
              ? static_cast<T>(num)
              : static_cast<T>(num) + ((num > 0) ? 1 : 0);
 }
 
-template <typename T>
-T lowest_multiple_above(T num, T threshold, uint16_t *factor) {
-  T result = num;
-  uint16_t factor_ = 1;
-  while (result < threshold) {
-    result += num;
-    factor_++;
-  }
-  if (factor)
-    *factor = factor_;
-  return result;
-}
+constexpr const char *TAG = "main";
 
 // Initialize by running at 16.384 kHz with a 16384-sample window
 // This means taking:
@@ -53,6 +41,19 @@ constexpr size_t ADC_WINDOW_SIZE_MAX = 128;
 constexpr size_t WINDOW_SIZE_INIT =
     std::bit_ceil(ceil_const<double, size_t>(SAMPLE_RATE_INIT / MIN_HZ));
 
+template <typename T>
+T lowest_multiple_above(T num, T threshold, uint16_t *factor) {
+  T result = num;
+  uint16_t factor_ = 1;
+  while (result < threshold) {
+    result += num;
+    factor_++;
+  }
+  if (factor)
+    *factor = factor_;
+  return result;
+}
+
 std::array<adc_continuous_data_t, ADC_WINDOW_SIZE_MAX> adc_data_buffer{};
 std::array<std::array<Sample, WINDOW_SIZE_INIT + fft_analysis::PREV_DATA_SIZE +
                                   fft_analysis::NEXT_DATA_SIZE>,
@@ -64,9 +65,9 @@ struct FFTState {
   fft_analysis::FFTAnalysis<Sample> analysis{fft_analysis::FFTAnalysisOptions{
       .sample_rate_hz = SAMPLE_RATE_INIT,
       .window_size = WINDOW_SIZE_INIT,
-      .filter = fft_analysis::FFTAnalysisFilter::Hampel,
-      .aggregation = fft_analysis::FFTAnalysisAggregation::TumblingWindow,
-      .aggregation_window_size = 128,
+      .filter = FFT_FILTER,
+      .aggregation = FFT_AGGREGATION,
+      .aggregation_window_size = FFT_AGGREGATION_WINDOW_SIZE,
   }};
   Sample sample_rate_hz = SAMPLE_RATE_INIT;
   uint16_t window_size = WINDOW_SIZE_INIT;
@@ -78,9 +79,9 @@ struct FFTState {
     analysis.set_options(fft_analysis::FFTAnalysisOptions{
         .sample_rate_hz = sample_rate_hz,
         .window_size = window_size,
-        .filter = fft_analysis::FFTAnalysisFilter::Hampel,
-        .aggregation = fft_analysis::FFTAnalysisAggregation::TumblingWindow,
-        .aggregation_window_size = 128,
+        .filter = FFT_FILTER,
+        .aggregation = FFT_AGGREGATION,
+        .aggregation_window_size = FFT_AGGREGATION_WINDOW_SIZE,
     });
     analysis.process(buffer[buffer_i].data(),
                      buffer[buffer_i].data() + fft_analysis::PREV_DATA_SIZE,
@@ -100,10 +101,6 @@ struct FFTState {
              sample_rate_hz, window_size);
   }
 };
-
-constexpr bool USE_MQTT = false;
-constexpr bool SWITCH_TO_OPTIMAL = false;
-constexpr uint8_t WAVE_INDEX = 0;
 
 static FFTState fft_state;
 
@@ -291,10 +288,10 @@ void collect_dummy(void *args) {
     ESP_LOGI(TAG, "Collecting for buffer %zu", buffer_i);
     ESP_LOGI(TAG, "Generating at %f Hz, %zu window size, offset %f s",
              sample_rate_hz, window_size, offset);
-    waves[WAVE_INDEX](buffer[buffer_i].data() + fft_analysis::PREV_DATA_SIZE +
-                          fft_analysis::NEXT_DATA_SIZE,
-                      window_size, sample_rate_hz, 127.5 * 0.825, 16.0 * 0.825,
-                      offset);
+    waves[DUMMY_WAVE_INDEX](
+        buffer[buffer_i].data() + fft_analysis::PREV_DATA_SIZE +
+            fft_analysis::NEXT_DATA_SIZE,
+        window_size, sample_rate_hz, 127.5 * 0.825, 16.0 * 0.825, offset);
     offset += (float)window_size / sample_rate_hz;
     ESP_LOGI(TAG, "Collecting done for buffer %zu", buffer_i);
 
@@ -317,7 +314,8 @@ extern "C" void app_main(void) {
   } else {
     lora = new LoRa(0);
   }
-  xTaskCreate(collect_dummy, "collect", 4096, nullptr, 5, &collect_task);
+  xTaskCreate(USE_DUMMY_WAVE ? collect_dummy : collect_adc, "collect", 4096,
+              nullptr, 5, &collect_task);
   xTaskCreate(process_fft, "fft", 4096, nullptr, 5, &fft_task);
   xTaskNotifyGive(collect_task);
 }

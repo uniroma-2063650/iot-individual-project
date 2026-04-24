@@ -8,9 +8,7 @@
 #include <lmic_hal/boards.hh>
 #include <lmic_hal/hal.hh>
 #include <protocol_examples_common.h>
-
-constexpr bool IS_HELTEC_V3 = true;
-constexpr u1_t PORT = 'L';
+#include "config.hh"
 
 constexpr const char *TAG = "LoRa";
 
@@ -44,7 +42,7 @@ void LoRa::run_static(void *args) {
   ESP_LOGI(TAG, "Configuring...");
 
   const ESP_IDF_LMIC::HalConfig config =
-      IS_HELTEC_V3
+      LORA_DEVICE_IS_HELTEC_V3
           ? ESP_IDF_LMIC::HalConfig{.board =
                                         *ESP_IDF_LMIC::
                                             get_board_config_heltec_lora32_v3()}
@@ -104,7 +102,7 @@ void LoRa::run_static(void *args) {
           ESP_LOGI(TAG, "TX ready");
         }
         LMIC_TX_ERROR_CHECK(LMIC_setTxData2_strict(
-            PORT, (u1_t *)self->packet_buffer.data(), packet_size, false));
+            LORA_PORT, (u1_t *)self->packet_buffer.data(), packet_size, false));
       }
     }
     os_runloop_once();

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <lmic/lmic.h>
 #include <freertos/FreeRTOS.h>
 

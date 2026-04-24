@@ -1,0 +1,61 @@
+menu "Main Configuration"
+
+    choice MAIN_DEVICE_KIND
+        prompt "Device"
+        config MAIN_DEVICE_KIND_HELTEC_V3
+            bool "Heltec LoRa 32 v3"
+        config MAIN_DEVICE_KIND_HELTEC_V2
+            bool "Heltec LoRa 32 v2"
+    endchoice
+
+    choice MAIN_TX_KIND
+        prompt "Aggregation Result Transmission"
+        config MAIN_TX_KIND_MQTT
+            bool "MQTT"
+        config MAIN_TX_KIND_LORA
+            bool "LoRaWAN"
+    endchoice
+
+    config MAIN_TX_LORA_PORT
+        int "Aggregation Result LoRaWAN Port"
+        default 1
+
+    config MAIN_SWITCH_TO_OPTIMAL_FREQ
+        bool "Switch to Optimal Frequency"
+        default n
+
+    choice MAIN_WAVE_SOURCE
+        prompt "Wave Source"
+        config MAIN_WAVE_SOURCE_DUMMY
+            bool "Dummy"
+        config MAIN_WAVE_SOURCE_ADC
+            bool "ADC"
+    endchoice
+
+    config MAIN_DUMMY_WAVE_INDEX
+        int "Dummy Wave Index"
+        default 0
+
+    choice MAIN_FFT_NOISE_FILTER
+        prompt "FFT Noise Filter"
+        config MAIN_FFT_NOISE_FILTER_HAMPEL
+            bool "Hampel"
+        config MAIN_FFT_NOISE_FILTER_ZSCORE
+            bool "Z-Score"
+        config MAIN_FFT_NOISE_FILTER_NONE
+            bool "None"
+    endchoice
+
+    choice MAIN_FFT_AGGREGATION
+        prompt "FFT Aggregation"
+        config MAIN_FFT_AGGREGATION_TUMBLING_WINDOW
+            bool "Tumbling Windows"
+        config MAIN_FFT_AGGREGATION_SLIDING_WINDOW
+            bool "Sliding Windows"
+    endchoice
+
+    config MAIN_FFT_AGGREGATION_WINDOW_SIZE
+        int "FFT Aggregation Window Size"
+        default 128
+
+endmenu

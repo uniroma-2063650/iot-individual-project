@@ -1,3 +1,5 @@
+#pragma once
+
 #include "arduinoFFT.h"
 #include "fft/aggregation.hh"
 #include "fft/noise_reduction.hh"
