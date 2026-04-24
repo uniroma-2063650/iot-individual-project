@@ -60,6 +60,78 @@ public:
   }
 };
 
+template <typename T, typename Size, size_t window_size> struct ZScoreWindowingFilter {
+private:
+  // std::vector<Size> outliers;
+
+  static bool replace_z_score(T window[window_size], T *value,
+                             const T z_score_threshold) {
+    const T x = window[window_size / 2];
+    T avg = 0.0;
+    for (Size i = 0; i < window_size; i++) {
+      avg += window[i];
+    }
+    avg /= window_size;
+    T square_dev_sum = 0.0;
+    for (Size i = 0; i < window_size; i++) {
+      const T dev = window[i] - avg;
+      square_dev_sum += dev * dev;
+    }
+    const T stddev = sqrt(square_dev_sum / window_size);
+    const T median = window[window_size / 2];
+    for (Size i = 0; i < window_size; i++) {
+      window[i] -= median;
+      if (window[i] < 0) {
+        window[i] = -window[i];
+      }
+    }
+    const T threshold = z_score_threshold * stddev;
+    const T min = avg - threshold;
+    const T max = avg + threshold;
+    if (x > min && x < max) return false;
+    *value = avg;
+    return true;
+  }
+
+public:
+  void calc(const T prev[window_size / 2], T buffer[],
+            const T next[window_size / 2], Size size,
+            const T z_score_threshold = 3) {
+    // outliers.empty();
+    T window[window_size];
+    for (Size i = 0; i < window_size / 2; i++) {
+      const Size window_prev_end = window_size / 2 - i;
+      memcpy(window, prev + i, window_prev_end * sizeof(T));
+      memcpy(window + window_prev_end, buffer,
+             (window_size - window_prev_end) * sizeof(T));
+      if (replace_z_score(window, &buffer[i], z_score_threshold)) {
+        ESP_LOGV(TAG, "Replacing outlier -%zu", window_size - 1 - i);
+        // outliers.push_back(i - (window_size - 1));
+      }
+    }
+    for (Size i = 0; i <= size - window_size; i++) {
+      memcpy(window, buffer + i, window_size * sizeof(T));
+      if (replace_z_score(window, &buffer[i + window_size / 2], z_score_threshold)) {
+        ESP_LOGV(TAG, "Replacing outlier %zu", i + window_size / 2);
+        // outliers.push_back(i);
+      }
+    }
+    for (Size i = 0; i < window_size / 2; i++) {
+      const Size window_buffer_end = window_size - (i + 1);
+      memcpy(window, buffer + size - window_buffer_end,
+             window_buffer_end * sizeof(T));
+      memcpy(window + window_buffer_end, next + i,
+             (window_size - window_buffer_end) * sizeof(T));
+      if (replace_z_score(window, &buffer[size - window_size / 2 + i],
+                         z_score_threshold)) {
+        ESP_LOGV(TAG, "Replacing outlier -%zu", size - window_size / 2 + i);
+        // outliers.push_back(i - (window_size - 1));
+      }
+    }
+    // return outliers;
+  }
+};
+
 template <typename T, typename Size, size_t window_size> struct HampelFilter {
 private:
   // std::vector<Size> outliers;

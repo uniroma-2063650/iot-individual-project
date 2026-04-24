@@ -24,8 +24,14 @@ const port = new SerialPort(
     }
 );
 
+let had_newline = { value: false };
 port.on("data", (data) => {
+    if (had_newline.value) {
+        const now = new Date();
+        process.stdout.write(`${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}: `);
+    }
     process.stdout.write(data.toString());
+    had_newline.value = data.toString().charAt(data.length - 1) == "\n";
 });
 
 rl.on("line", (data) => {

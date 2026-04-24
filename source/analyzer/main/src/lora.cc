@@ -1,6 +1,8 @@
 #include "lora.hh"
+#include "config.hh"
 #include "data.hh"
 #include "lmic/lmic.h"
+#include "lmic/lmic_bandplan.h"
 #include "lora_utils.hh"
 #include <driver/gpio.h>
 #include <esp_log.h>
@@ -8,18 +10,18 @@
 #include <lmic_hal/boards.hh>
 #include <lmic_hal/hal.hh>
 #include <protocol_examples_common.h>
-#include "config.hh"
+#include <utility>
 
 constexpr const char *TAG = "LoRa";
 
-static const uint8_t APP_EUI[]{
-  #include "../../lora_keys/app_eui.key"
+static uint8_t APP_EUI[]{
+#include "../../lora_keys/app_eui.key"
 };
-static const uint8_t DEV_EUI[]{
-  #include "../../lora_keys/dev_eui.key"
+static uint8_t DEV_EUI[]{
+#include "../../lora_keys/dev_eui.key"
 };
-static const uint8_t APP_KEY[]{
-  #include "../../lora_keys/app_key.key"
+static uint8_t APP_KEY[]{
+#include "../../lora_keys/app_key.key"
 };
 
 void os_getDevEui(u1_t *buf) { os_copyMem(buf, DEV_EUI, sizeof(DEV_EUI)); }
@@ -36,8 +38,28 @@ LoRa::LoRa(uint8_t core) {
                                  core) == pdTRUE);
 }
 
+static void reverse_bits(uint8_t buf[], size_t size) {
+  for (size_t i = 0; i < size; i++) {
+    uint8_t value = 0;
+    for (size_t j = 0; j < 8; j++) {
+      value |= ((buf[i] >> j) & 1) << (7 - j);
+    }
+    buf[i] = value;
+  }
+}
+
+static void reverse_bytes(uint8_t buf[], size_t size) {
+  for (size_t i = 0; i < size / 2; i++) {
+    std::swap(buf[i], buf[size - 1 - i]);
+  }
+}
+
 void LoRa::run_static(void *args) {
   LoRa *self = (LoRa *)args;
+
+  // reverse_bytes(APP_EUI, sizeof(APP_EUI) / sizeof(uint8_t));
+  // reverse_bytes(DEV_EUI, sizeof(DEV_EUI) / sizeof(uint8_t));
+  // reverse_bytes(APP_KEY, sizeof(APP_KEY) / sizeof(uint8_t));
 
   ESP_LOGI(TAG, "Configuring...");
 
@@ -75,6 +97,7 @@ void LoRa::run_static(void *args) {
   ESP_LOGI(TAG, "Registering event callback...");
 
   LMIC_registerEventCb(LoRa::handle_event_static, self);
+  LMICcore_setDrJoin(DRCHG_SET, DR_SF12);
 
   ESP_LOGI(TAG, "Starting joining...");
 
@@ -85,27 +108,32 @@ void LoRa::run_static(void *args) {
   for (;;) {
     {
       AggregationData data;
-      while (xQueueReceive(self->queue, &data, 0) == pdTRUE) {
-        ESP_LOGI(TAG,
-                 "Sending %zu aggregate values (%zu B, %f s per value) at %f s",
-                 data.size, data.size * sizeof(float), data.end_seconds);
+      if (!LMIC_queryTxReady()) {
+        while (xQueueReceive(self->queue, &data, 0) == pdTRUE) {
+          ESP_LOGI(
+              TAG,
+              "Sending %zu aggregate values (%zu B, %f s per value) at %f s",
+              data.size, data.size * sizeof(float), data.seconds_per_value,
+              data.end_seconds);
 
-        const size_t packet_size = data.packed_size();
-        self->packet_buffer.resize(packet_size);
-        data.pack(self->packet_buffer.data());
+          const size_t packet_size = data.packed_size();
+          self->packet_buffer.resize(packet_size);
+          data.pack(self->packet_buffer.data());
 
-        if (!LMIC_queryTxReady()) {
-          ESP_LOGI(TAG, "Waiting for TX to be ready...");
-          while (!LMIC_queryTxReady()) {
-            vTaskDelay(pdMS_TO_TICKS(50));
+          if (!LMIC_queryTxReady()) {
+            ESP_LOGI(TAG, "Waiting for TX to be ready...");
+            ESP_LOGI(TAG, "TX ready");
           }
-          ESP_LOGI(TAG, "TX ready");
+          LMIC_TX_ERROR_CHECK(LMIC_setTxData2_strict(
+              LORA_PORT, (u1_t *)self->packet_buffer.data(), packet_size,
+              false));
         }
-        LMIC_TX_ERROR_CHECK(LMIC_setTxData2_strict(
-            LORA_PORT, (u1_t *)self->packet_buffer.data(), packet_size, false));
       }
     }
     os_runloop_once();
+    if (!LMIC_queryTxReady()) {
+      vTaskDelay(pdMS_TO_TICKS(50));
+    }
   }
 
   vTaskDelete(nullptr);

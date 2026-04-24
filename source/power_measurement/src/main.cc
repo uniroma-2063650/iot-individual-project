@@ -13,7 +13,6 @@ int main() {
     double shunt_voltage = ina219::read_shunt_voltage();
     double current = ina219::read_current();
     double power = ina219::read_power();
-    _delay_ms(1000.0);
     LOGI(TAG, "B: %.2f V, S: %.2f mV, C: %.2f mA, P: %.2f mW", bus_voltage,
          shunt_voltage, current, power);
   }

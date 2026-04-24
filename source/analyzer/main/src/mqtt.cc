@@ -129,7 +129,8 @@ void Mqtt::run_static(void *args) {
 
     ESP_LOGI(TAG,
              "Sending %zu aggregate values (%zu B, %f s per value) at %f s",
-             data.size, data.size * sizeof(float), data.end_seconds);
+             data.size, data.size * sizeof(float), data.seconds_per_value,
+             data.end_seconds);
 
     const size_t packet_size = data.packed_size();
     self->packet_buffer.resize(packet_size);

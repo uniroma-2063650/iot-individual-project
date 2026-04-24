@@ -31,7 +31,7 @@ template <typename T>
 void generate_dummy_data_clean_b(T buffer[], size_t window_size,
                                  float sample_rate, float bias, float amplitude,
                                  float offset) {
-  const std::array<float, 4> a{4.0, 3.0, 2.0, 5.0};
+  const std::array<float, 4> a{4.0, 3.0, 2.0, 7.0};
   const std::array<float, 4> f{100.0, 1000.0, 2000.0, 4000.0};
   ESP_LOGI(TAG,
            "Generating sample data: (%f)sin(2pi*(%f)t) + (%f)sin(2pi*(%f)t) + "

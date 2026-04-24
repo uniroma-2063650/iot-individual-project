@@ -29,6 +29,10 @@
 #ifndef _lmic_bandplan_h_
 # define _lmic_bandplan_h_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef _lmic_h_
 # include "lmic.h"
 #endif
@@ -257,5 +261,8 @@ static inline dr_t  decDR    (dr_t dr) { return TABLE_GET_U1(_DR2RPS_CRC, dr  )=
 static inline dr_t  assertDR (dr_t dr) { return TABLE_GET_U1(_DR2RPS_CRC, dr+1)==ILLEGAL_RPS ? (dr_t)DR_DFLTMIN : dr; }   // force into a valid DR
 static inline dr_t  lowerDR  (dr_t dr, u1_t n) { while(n--){dr=decDR(dr);} return dr; } // decrease data rate by n steps
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _lmic_bandplan_h_

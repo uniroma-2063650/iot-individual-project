@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <esp_adc/adc_continuous.h>
+#include <esp_pm.h>
 #include <soc/adc_channel.h>
 #include <soc/soc_caps.h>
 
@@ -94,7 +95,7 @@ struct FFTState {
     const size_t optimal_window_size =
         std::max(std::bit_ceil(ceil_const<Sample, size_t>(
                      analysis.result.optimal_sample_rate_hz / MIN_HZ)),
-                 (size_t)64);
+                 (size_t)16);
     sample_rate_hz = analysis.result.optimal_sample_rate_hz;
     window_size = optimal_window_size;
     ESP_LOGI(TAG, "Using sample rate of %f Hz and window size of %zu samples",
@@ -304,11 +305,16 @@ void collect_dummy(void *args) {
     }
     buffer_i ^= 1;
 
-    xTaskDelayUntil(&start, pdMS_TO_TICKS(1000));
+    xTaskDelayUntil(
+        &start, pdMS_TO_TICKS(1000.0 * (float)window_size / sample_rate_hz));
   }
 }
 
 extern "C" void app_main(void) {
+  esp_pm_config_t pm_config = {
+      .max_freq_mhz = 240, .min_freq_mhz = 10, .light_sleep_enable = true};
+  ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+
   if constexpr (USE_MQTT) {
     mqtt = new Mqtt();
   } else {

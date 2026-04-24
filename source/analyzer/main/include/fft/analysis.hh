@@ -152,6 +152,7 @@ template <typename T> T find_last_peak_freq(T buffer[], size_t size) {
 enum class FFTAnalysisFilter {
   None,
   ZScore,
+  ZScoreWindowing,
   Hampel,
 };
 
@@ -176,6 +177,7 @@ template <typename T> struct FFTAnalysisResult {
 
 constexpr uint8_t HAMPEL_WINDOW_SIZE = 9;
 constexpr float Z_SCORE_THRESHOLD = 1.75f;
+constexpr float Z_SCORE_WINDOWING_THRESHOLD = 1.75f;
 constexpr float HAMPEL_THRESHOLD = 1.0f;
 constexpr uint8_t PREV_DATA_SIZE = HAMPEL_WINDOW_SIZE / 2;
 constexpr uint8_t NEXT_DATA_SIZE = HAMPEL_WINDOW_SIZE / 2;
@@ -227,6 +229,11 @@ template <typename T> struct FFTAnalysis {
       filter.calc(data, options.window_size, Z_SCORE_THRESHOLD);
       break;
     }
+    case FFTAnalysisFilter::ZScoreWindowing: {
+      fft_noise_reduction::ZScoreWindowingFilter<T, uint16_t, HAMPEL_WINDOW_SIZE> filter;
+      filter.calc(data, options.window_size, Z_SCORE_WINDOWING_THRESHOLD);
+      break;
+    }
     case FFTAnalysisFilter::Hampel: {
       fft_noise_reduction::HampelFilter<T, uint16_t, HAMPEL_WINDOW_SIZE> filter;
       filter.calc(prev_data, data, next_data, options.window_size,
@@ -266,8 +273,8 @@ template <typename T> struct FFTAnalysis {
     fft.dcRemoval(data, options.window_size);
     // Apply windowing to minimize spectral leakage:
     // https://www.ti.com/content/dam/videos/external-videos/ja-jp/2/3816841626001/5834902778001.mp4/subassets/adcs-fast-fourier-transforms-and-windowing-presentation-quiz.pdf
-    fft.windowing(data, options.window_size, FFTWindow::Hann,
-                  FFTDirection::Forward, nullptr, false);
+    // fft.windowing(data, options.window_size, FFTWindow::Hann,
+    //               FFTDirection::Forward, nullptr, false);
     fft.compute(data, buffer_complex, options.window_size,
                 FFTDirection::Forward);
     fft.complexToMagnitude(data, buffer_complex, options.window_size);

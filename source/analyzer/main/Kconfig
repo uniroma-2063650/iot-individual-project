@@ -42,6 +42,8 @@ menu "Main Configuration"
             bool "Hampel"
         config MAIN_FFT_NOISE_FILTER_ZSCORE
             bool "Z-Score"
+        config MAIN_FFT_NOISE_FILTER_ZSCORE_WINDOWING
+            bool "Z-Score Windowing"
         config MAIN_FFT_NOISE_FILTER_NONE
             bool "None"
     endchoice
