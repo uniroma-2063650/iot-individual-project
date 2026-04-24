@@ -70,9 +70,9 @@ Unless noted otherwise, the below measurements are taken while running the analy
 
 First of all, savings were compared for signal A, with a maximum frequency of 5.6 Hz:
 
-![Current with signal A and no sample rate adjustment](imgs/current_A_unoptimized.png)
-
-![Current with signal A and sample rate adjustment](imgs/current_A_optimized.png)
+| Unoptimized | Optimized |
+| ----------- | --------- |
+| ![Current with signal A and no sample rate adjustment](imgs/current_A_unoptimized.png) | ![Current with signal A and sample rate adjustment](imgs/current_A_optimized.png) |
 
 As can be seen, the very low frequency of the signal allows the microcontroller to only wake from sleep very rarely, reducing its average current draw over its first 30 seconds from 54.17 mA to 9.24 mA (trending down after the initial spike).
 
@@ -91,6 +91,14 @@ Signal B (unoptimized vs optimized):
 
 As shown, the optimization shows diminishing return the closer the signal's highest frequency gets to the Nyquist frequency of 8.192 kHz (relative to a 16.384 kHz sampling rate): for signal B, the decrease in current draw is only of 31.35 mA (from 70.53 mA to 39.18 mA), while for signal C it's very low at 1.05 mA (from 69.82 mA to 68.77 mA).
 
+Memory usage, regardless of the optimal sample rate, is mostly composed by:
+- 512 B of ADC sample memory (128 samples * 4 B/sample for adc_continuous_data_t)
+- 1 KiB for ADC DMA buffers (256 samples * 4 B/sample)
+- 128 KiB of float sample memory (((16384 + 8) samples * 4 B/sample) * double buffer)
+- 64 KiB of additional FFT processing memory (16384 floats for complex parts)
+
+This can however potentially be lowered by dynamically reallocating buffers with a smaller size after the sample rate is adjusted.
+
 ### Noisy Signals
 
 In contrast to the 3 previous signals, signal D incorporates random noise: its n(t) Gaussian noise component models sensor baseline noise, while its A(t) anomaly injection component simulates transient hardware faults and disturbances.
@@ -99,9 +107,14 @@ From the point of view of the analyzer, the high-frequency baseline noise can on
 
 In general, the unwindowed Z-score filter, run on the full FFT input, worked well at detecting and replacing anomaly spikes that went outside the bounds of normal signals but didn't eliminate lower-amplitude spikes or spikes where the resulting sample was anomalous compared to its surroundings but still within the normal bounds of the overall signal.
 
-Windowed filters, such as a windowed Z-score filter and a hampel filter, performed almost perfectly at detecting and replacing anomalies and sparing normal data, although the baseline noise remained.
+Windowed filters, such as a windowed Z-score filter and a hampel filter, performed almost perfectly at detecting and replacing anomalies and sparing normal data, although the baseline noise remained. However, it must be noted that they add a latency equal to their window size - 1, divided by the sample rate; since a 9-sample window was used at 16384 Hz, this resulted in a 0.5 ms delay.
 
-![Hampel filter results](imgs/hampel.png)
+| Filter | Values |
+| ------ | ------ |
+| Raw    | ![Raw](imgs/raw.png) |
+| Z-score | ![Z-score filter results](imgs/z_score_filtered.png) |
+| Z-score windowed | ![Z-score windowed results](imgs/z_score_windowed_filtered.png) |
+| Hampel | ![Hampel filter results](imgs/hampel_filtered.png) |
 
 ### Latency
 

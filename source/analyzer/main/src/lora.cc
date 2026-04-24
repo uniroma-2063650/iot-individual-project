@@ -108,7 +108,7 @@ void LoRa::run_static(void *args) {
   for (;;) {
     {
       AggregationData data;
-      if (!LMIC_queryTxReady()) {
+      if (LMIC_queryTxReady()) {
         while (xQueueReceive(self->queue, &data, 0) == pdTRUE) {
           ESP_LOGI(
               TAG,

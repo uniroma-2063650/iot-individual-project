@@ -177,8 +177,8 @@ template <typename T> struct FFTAnalysisResult {
 
 constexpr uint8_t HAMPEL_WINDOW_SIZE = 9;
 constexpr float Z_SCORE_THRESHOLD = 1.75f;
-constexpr float Z_SCORE_WINDOWING_THRESHOLD = 1.75f;
-constexpr float HAMPEL_THRESHOLD = 1.0f;
+constexpr float Z_SCORE_WINDOWING_THRESHOLD = 2.0f;
+constexpr float HAMPEL_THRESHOLD = 2.0f;
 constexpr uint8_t PREV_DATA_SIZE = HAMPEL_WINDOW_SIZE / 2;
 constexpr uint8_t NEXT_DATA_SIZE = HAMPEL_WINDOW_SIZE / 2;
 
@@ -230,8 +230,11 @@ template <typename T> struct FFTAnalysis {
       break;
     }
     case FFTAnalysisFilter::ZScoreWindowing: {
-      fft_noise_reduction::ZScoreWindowingFilter<T, uint16_t, HAMPEL_WINDOW_SIZE> filter;
-      filter.calc(data, options.window_size, Z_SCORE_WINDOWING_THRESHOLD);
+      fft_noise_reduction::ZScoreWindowingFilter<T, uint16_t,
+                                                 HAMPEL_WINDOW_SIZE>
+          filter;
+      filter.calc(prev_data, data, next_data, options.window_size,
+                  Z_SCORE_WINDOWING_THRESHOLD);
       break;
     }
     case FFTAnalysisFilter::Hampel: {
@@ -252,16 +255,19 @@ template <typename T> struct FFTAnalysis {
     result.aggregation_results.clear();
     switch (options.aggregation) {
     case FFTAnalysisAggregation::TumblingWindow: {
-      tumbling_window_avg.calc(result.aggregation_results, data, options.window_size);
+      tumbling_window_avg.calc(result.aggregation_results, data,
+                               options.window_size);
       break;
     }
     case FFTAnalysisAggregation::SlidingWindow: {
-      sliding_window_avg.calc(result.aggregation_results, data, options.window_size);
+      sliding_window_avg.calc(result.aggregation_results, data,
+                              options.window_size);
       break;
     }
     }
 
-    ESP_LOGI(TAG, "Average output size: %zu", result.aggregation_results.size());
+    ESP_LOGI(TAG, "Average output size: %zu",
+             result.aggregation_results.size());
     if (false && options.window_size < 256) {
       for (size_t i = 0; i < result.aggregation_results.size(); i++) {
         ESP_LOGI(TAG, "Averaged: %f, %f", (T)i / options.sample_rate_hz,

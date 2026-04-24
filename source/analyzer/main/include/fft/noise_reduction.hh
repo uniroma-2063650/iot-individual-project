@@ -67,6 +67,9 @@ private:
   static bool replace_z_score(T window[window_size], T *value,
                              const T z_score_threshold) {
     const T x = window[window_size / 2];
+    for (Size i = 0; i < window_size; i++) {
+      if (isinf(window[i]) || isnan(window[i])) window[i] = x;
+    }
     T avg = 0.0;
     for (Size i = 0; i < window_size; i++) {
       avg += window[i];
@@ -78,13 +81,6 @@ private:
       square_dev_sum += dev * dev;
     }
     const T stddev = sqrt(square_dev_sum / window_size);
-    const T median = window[window_size / 2];
-    for (Size i = 0; i < window_size; i++) {
-      window[i] -= median;
-      if (window[i] < 0) {
-        window[i] = -window[i];
-      }
-    }
     const T threshold = z_score_threshold * stddev;
     const T min = avg - threshold;
     const T max = avg + threshold;
@@ -178,6 +174,9 @@ private:
   static bool replace_hampel(T window[window_size], T *value,
                              const T mad_threshold) {
     const T x = window[window_size / 2];
+    for (Size i = 0; i < window_size; i++) {
+      if (isinf(window[i]) || isnan(window[i])) window[i] = x;
+    }
     sort(window);
     const T median = window[window_size / 2];
     for (Size i = 0; i < window_size; i++) {
